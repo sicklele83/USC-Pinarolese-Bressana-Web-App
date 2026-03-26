@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>U.S.C. Pinarolese Bressana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- PAGES -->
+<div id="page-home" class="page active">
+  <div class="hero">
+    <div class="hero-bg" style="background-image:url('images/img2.jpg')"></div>
+    <div class="hero-field"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <div class="hero-logo"><img loading="lazy" src="images/img1.png" alt="Logo USC Pinarolese Bressana"/></div>
+      <div class="hero-text">
+        <h1>U.S.C. Pinarolese<br>Bressana</h1>
+        <p>Società Calcistica Giovanile</p>
+      </div>
+    </div>
+  </div>
+  <div style="height:16px"></div>
+</div>
+
+<div id="page-notizie" class="page">
+
+  <div class="news-list" id="notizie-list"></div>
+  <div style="height:16px"></div>
+</div>
+
+<div id="page-eventi" class="page">
+
+  <div class="events-list" id="eventi-list"></div>
+</div>
+
+<div id="page-partite" class="page">
+
+
+  <!-- Banner squadra preferita -->
+  <div id="fav-banner-container"></div>
+
+  <!-- Modal selezione squadra preferita -->
+  <div class="fav-modal-overlay" id="fav-modal-overlay" onclick="closeFavModal(event)">
+    <div class="fav-modal">
+      <h4>⭐ Scegli la tua squadra preferita</h4>
+      <div id="fav-modal-list"></div>
+      <button class="fav-modal-reset" onclick="setFavSquadra(null)">Nessuna preferita</button>
+    </div>
+  </div>
+
+  <div class="partite-filters">
+    <select class="partite-select" id="partite-squadra-filter" onchange="onSquadraFilterChange()">
+      <option value="">Tutte le squadre</option>
+    </select>
+    <div class="partite-tabs">
+      <button class="partite-tab tab-active-all" id="tab-all" onclick="setPartiteTab('all')">Tutte</button>
+      <button class="partite-tab" id="tab-future" onclick="setPartiteTab('future')">Prossime</button>
+      <button class="partite-tab" id="tab-past" onclick="setPartiteTab('past')">Risultati</button>
+    </div>
+  </div>
+
+  <div id="sheets-status" style="display:none;text-align:center;font-size:12px;color:var(--testo-muted);padding:6px 16px;"></div>
+  <div class="partite-list" id="partite-list"></div>
+</div>
+
+<div id="page-squadre" class="page">
+  <div id="squadre-main">
+
+      <div class="squadre-grid" id="squadre-list"></div>
+  </div>
+  <div id="squadra-detail-view" style="display:none"></div>
+</div>
+
+<div id="page-altro" class="page">
+
+  <div class="altro-section" id="altro-content"></div>
+</div>
+
+
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" onclick="showPage('home',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </button>
+  <button class="nav-btn" onclick="showPage('eventi',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Eventi
+  </button>
+  <button class="nav-btn" onclick="showPage('partite',this)">
+    <svg viewBox="0 0 24 30" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Bordo campo -->
+      <rect x="1" y="1" width="22" height="28" rx="1"/>
+      <!-- Linea di metà campo -->
+      <line x1="1" y1="15" x2="23" y2="15"/>
+      <!-- Cerchio di centrocampo -->
+      <circle cx="12" cy="15" r="4"/>
+      <!-- Punto centrale -->
+      <circle cx="12" cy="15" r="0.45" fill="currentColor"/>
+      <!-- Area di rigore alto -->
+      <rect x="5.5" y="1" width="13" height="6"/>
+      <!-- Area piccola alto -->
+      <rect x="8.5" y="1" width="7" height="3"/>
+      <!-- Area di rigore basso -->
+      <rect x="5.5" y="23" width="13" height="6"/>
+      <!-- Area piccola basso -->
+      <rect x="8.5" y="26" width="7" height="3"/>
+      <!-- Dischetto rigore alto -->
+      <circle cx="12" cy="9" r="0.45" fill="currentColor"/>
+      <!-- Dischetto rigore basso -->
+      <circle cx="12" cy="21" r="0.45" fill="currentColor"/>
+    </svg>
+    Partite
+  </button>
+  <button class="nav-btn" onclick="showPage('squadre',this)">
+    <svg viewBox="0 0 24 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Collo rotondo -->
+      <path d="M9 2 Q9 2 10 2 Q12 5 14 2 Q15 2 15 2"/>
+      <!-- Spalla sinistra e manica sinistra -->
+      <path d="M9 2 L3 5 L3 10 L8 10 L8 8"/>
+      <!-- Lato sinistro corpo -->
+      <path d="M8 8 L8 21 L16 21"/>
+      <!-- Lato destro corpo -->
+      <path d="M16 21 L16 8 L16 8"/>
+      <!-- Spalla destra e manica destra -->
+      <path d="M15 2 L21 5 L21 10 L16 10 L16 8"/>
+    </svg>
+    Squadre
+  </button>
+  <button class="nav-btn" onclick="showPage('altro',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+    Altro
+  </button>
+</nav>
+
+<script src="app.js" defer></script>
+</body>
+</html>
