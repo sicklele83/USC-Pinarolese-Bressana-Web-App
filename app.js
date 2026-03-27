@@ -80,7 +80,7 @@ const DEFAULT_DATA = {
 const SHEETS_ID = localStorage.getItem('pinarolese_sheets_id') || "1PyjvETJgeUSI-YvyULD1RvSCx703ew1hHVGM8nzJ77o";
 
 // Campi gestiti da Sheets: vengono sempre presi dal foglio, mai dal localStorage
-const SHEETS_FIELDS = ['partite', 'notizie', 'eventi'];
+const SHEETS_FIELDS = ['notizie', 'partite', 'eventi', 'campiAltri', 'campiPropri', 'sponsor', 'collaborazioni', 'wallpaper', 'contatti', 'squadre', 'societa'];
 
 function loadData() {
   try {
@@ -102,12 +102,17 @@ function saveData(d) {
 
 let DATA = loadData();
 
-// Avvia la sync da Sheets al caricamento
+function showSheetsStatus(msg) {
+  const el = document.getElementById('sheets-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Avvia la sync al caricamento via Apps Script (funziona anche da file://)
 window.addEventListener('DOMContentLoaded', () => {
-  if (SHEETS_ID) {
-    // Cancella cache locale per forzare lettura fresca da Sheets
-    localStorage.removeItem('pinarolese_data');
-    syncFromSheets();
+  if (typeof syncFromAppsScript === 'function') {
+    syncFromAppsScript();
   }
 });
 
@@ -118,19 +123,33 @@ const SHEET_NOTIZIE      = "Notizie";
 const SHEET_EVENTI       = "Eventi";
 const SHEET_CAMPI_ALTRI  = "CampiAltri";
 
-async function fetchSheet(sheetName) {
-  if (!SHEETS_ID) return null;
-  const url = `https://docs.google.com/spreadsheets/d/${SHEETS_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-  try {
-    const res = await fetch(url);
-    const text = await res.text();
-    const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
-    return json.table;
-  } catch(e) {
-    console.warn('Sheets fetch error [' + sheetName + ']:', e);
-    showSheetsStatus('⚠️ Errore: verifica che il foglio sia pubblico (Condividi → Chiunque con il link)');
-    return null;
-  }
+function fetchSheet(sheetName) {
+  return new Promise((resolve) => {
+    if (!SHEETS_ID) { resolve(null); return; }
+    const cbName = '_gsq_' + sheetName.replace(/\W/g, '') + '_' + Date.now();
+    const url = 'https://docs.google.com/spreadsheets/d/' + SHEETS_ID +
+      '/gviz/tq?tqx=out:json;responseHandler:' + cbName +
+      '&sheet=' + encodeURIComponent(sheetName) + '&headers=1';
+    const timer = setTimeout(() => {
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      resolve(null);
+    }, 8000);
+    window[cbName] = (data) => {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      resolve(data.table || null);
+    };
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = () => {
+      clearTimeout(timer);
+      delete window[cbName];
+      resolve(null);
+    };
+    document.head.appendChild(script);
+  });
 }
 
 function normalizeSheetValue(cell) {
@@ -175,11 +194,21 @@ function driveLinkToDirect(url) {
 async function syncFromSheets() {
   if (!SHEETS_ID) return;
   showSheetsStatus('⏳ Aggiornamento da Google Sheets...');
+  const hn = document.getElementById('home-news');
+  if (hn) hn.innerHTML = '<div style="text-align:center;padding:20px;font-size:13px;color:var(--testo-muted)">⏳ Caricamento notizie...</div>';
+
+  // Tutti i fetch in parallelo: evita che tab mancanti causino attese cumulative
+  const [tPartite, tGioc, tNotizie, tEventi, tCampiAltri] = await Promise.all([
+    fetchSheet(SHEET_PARTITE).catch(() => null),
+    fetchSheet(SHEET_GIOCATORI).catch(() => null),
+    fetchSheet(SHEET_NOTIZIE).catch(() => null),
+    fetchSheet(SHEET_EVENTI).catch(() => null),
+    fetchSheet(SHEET_CAMPI_ALTRI).catch(() => null)
+  ]);
 
   let updated = [];
 
   // --- PARTITE ---
-  const tPartite = await fetchSheet(SHEET_PARTITE);
   if (tPartite) {
     const rows = sheetsTableToRows(tPartite);
     DATA.partite = rows.map((r, i) => ({
@@ -198,10 +227,8 @@ async function syncFromSheets() {
   }
 
   // --- GIOCATORI ---
-  const tGioc = await fetchSheet(SHEET_GIOCATORI);
   if (tGioc) {
     const rows = sheetsTableToRows(tGioc);
-    // Svuota SEMPRE prima, poi riempi da Sheets
     DATA.squadre.forEach(sq => {
       sq.giocatori = [];
       const gioc = rows.filter(r => r['squadra'] && r['squadra'].toLowerCase() === sq.nome.toLowerCase());
@@ -217,7 +244,6 @@ async function syncFromSheets() {
   }
 
   // --- NOTIZIE ---
-  const tNotizie = await fetchSheet(SHEET_NOTIZIE);
   if (tNotizie) {
     const rows = sheetsTableToRows(tNotizie);
     DATA.notizie = rows.map((r, i) => ({
@@ -230,7 +256,6 @@ async function syncFromSheets() {
   }
 
   // --- EVENTI ---
-  const tEventi = await fetchSheet(SHEET_EVENTI);
   if (tEventi) {
     const rows = sheetsTableToRows(tEventi);
     DATA.eventi = rows.map((r, i) => ({
@@ -245,9 +270,7 @@ async function syncFromSheets() {
     updated.push('Eventi');
   }
 
-
   // --- ALTRI CAMPI ---
-  const tCampiAltri = await fetchSheet(SHEET_CAMPI_ALTRI);
   if (tCampiAltri) {
     const rows = sheetsTableToRows(tCampiAltri);
     DATA.campiAltri = rows.map((r, i) => ({
@@ -262,7 +285,6 @@ async function syncFromSheets() {
 
   saveData(DATA);
 
-  // Aggiorna la UI di tutte le pagine aperte
   try { renderHome(); } catch(e) {}
   if (document.getElementById('page-partite')?.style.display !== 'none') renderPartite();
   if (document.getElementById('page-squadre')?.style.display !== 'none') renderSquadre();
@@ -272,7 +294,6 @@ async function syncFromSheets() {
     ? '✅ Aggiornato: ' + updated.join(', ')
     : '⚠️ Nessun foglio trovato — controlla i nomi dei tab';
   showSheetsStatus(msg);
-  // Aggiorna anche lo status nell'admin se aperto
   setTimeout(() => showSheetsStatus(''), 4000);
 }
 
@@ -944,10 +965,10 @@ function renderAltro() {
     <div class="altro-card" id="sezione-Società">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         La Società
       </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         <p style="white-space: pre-line;margin-bottom:14px">${DATA.societa}</p>
@@ -959,46 +980,46 @@ function renderAltro() {
     <div class="altro-card" id="sezione-Contatti">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
           Contatti
         </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-          <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span style="color:var(--testo-muted)">Sede: Via Franco Barbieri, 7, 27040 Pinarolo Po (PV).</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="color:var(--testo-muted)">Mail:</span>
-              <a href="mailto:uscpinarolese@gmail.com" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--azzurro);font-size:13px;font-weight:600;background:var(--azzurro-light);padding:5px 10px;border-radius:20px">
-                uscpinarolese@gmail.com
-              </a>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="color:var(--testo-muted)">Presidente: Marco Gioannini</span>
-              <a href="tel:3382581122" class="btn-tel" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:white;font-size:11px;font-weight:600;background:var(--arancione);padding:5px 10px;border-radius:20px">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                338 258 1122
-              </a>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="color:var(--testo-muted)">Vicepresidente: Claudio Bianchini</span>
-              <a href="tel:3939337697" class="btn-tel" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:white;font-size:11px;font-weight:600;background:var(--arancione);padding:5px 10px;border-radius:20px">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-                393 933 7697
-              </a>
-            </div>
-          </div>
+          ${DATA.contatti.map(c => {
+            const svgPin    = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
+            const svgMail   = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
+            const svgPhone  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>`;
+            const svgPerson = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+            if (c.tipo === 'indirizzo') return `
+              <div style="display:flex;align-items:flex-start;gap:10px;font-size:14px">
+                ${svgPin}
+                <span style="color:var(--testo-muted)">${c.valore}${c.maps ? ` <a href="${c.maps}" target="_blank" rel="noopener" style="color:var(--azzurro);font-size:12px;font-weight:600;margin-left:4px">Maps →</a>` : ''}</span>
+              </div>`;
+            if (c.tipo === 'email') return `
+              <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+                ${svgMail}
+                <a href="mailto:${c.valore}" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--azzurro);font-size:13px;font-weight:600;background:var(--azzurro-light);padding:5px 10px;border-radius:20px">${c.valore}</a>
+              </div>`;
+            if (c.tipo === 'telefono') return `
+              <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+                ${svgPhone}
+                <a href="tel:${c.valore.replace(/\s/g,'')}" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--azzurro);font-size:13px;font-weight:600;background:var(--azzurro-light);padding:5px 10px;border-radius:20px">${c.valore}</a>
+              </div>`;
+            if (c.tipo === 'persona') return `
+              <div style="display:flex;align-items:center;gap:10px;font-size:14px">
+                ${svgPerson}
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="color:var(--testo-muted)">${c.valore}</span>
+                  ${c.tel ? `<a href="tel:${c.tel.replace(/\s/g,'')}" class="btn-tel" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:white;font-size:11px;font-weight:600;background:var(--arancione);padding:5px 10px;border-radius:20px">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                    ${c.tel}
+                  </a>` : ''}
+                </div>
+              </div>`;
+            return '';
+          }).join('')}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <a href="https://www.facebook.com/USCpinarolesebressana?locale=it_IT" target="_blank" rel="noopener"
@@ -1022,32 +1043,30 @@ function renderAltro() {
     <div class="altro-card" id="sezione-CampiPropri">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           I Nostri Campi da Gioco
         </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         ${DATA.campiPropri.map(c => `
           <div class="campo-item">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span class="campo-nome" style="margin-bottom:0">${c.nome}</span>
-              ${c.indirizzo ? `<span class="campo-indirizzo" style="flex:1;min-width:0">${c.indirizzo}</span>` : ''}
-              ${c.maps ? `<a href="${c.maps}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--azzurro);font-size:12px;font-weight:600;background:var(--azzurro-light);padding:5px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--azzurro)" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                Maps
-              </a>` : ''}
-            </div>
+            <div class="campo-nome">${c.nome}</div>
+            ${c.indirizzo ? `<div class="campo-indirizzo">${c.indirizzo}</div>` : ''}
+            ${c.maps ? `<a href="${c.maps}" target="_blank" rel="noopener" class="campo-maps-btn">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--azzurro)" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Apri in Maps
+            </a>` : ''}
           </div>`).join('')}
       </div>
     </div>
     <div class="altro-card" id="sezione-Sponsor">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
         Sponsor
       </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         ${DATA.sponsor.map(s => `
@@ -1071,10 +1090,10 @@ function renderAltro() {
     <div class="altro-card" id="sezione-Collaborazioni">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         Collaborazioni
       </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         <div class="collab-list">
@@ -1102,10 +1121,10 @@ function renderAltro() {
     <div class="altro-card" id="sezione-CampiAltri">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           Altri Campi da Gioco
         </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         ${(!DATA.campiAltri || !DATA.campiAltri.length)
@@ -1128,10 +1147,10 @@ function renderAltro() {
     <div class="altro-card" id="sezione-Wallpaper">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
         Wallpaper
       </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         ${(!DATA.wallpaper || !DATA.wallpaper.length)
@@ -1156,10 +1175,10 @@ function renderAltro() {
     <div class="altro-card">
       <div class="altro-card-header" onclick="toggleAltroCard(this)">
         <h3 style="display:flex;align-items:center;gap:8px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--azzurro)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         Tema
       </h3>
-        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="altro-card-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="altro-card-body">
         <div class="tema-selector" id="tema-selector">
@@ -1190,7 +1209,10 @@ function renderAltro() {
       </div>
     </div>
     <div class="app-credits" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      ${SHEETS_ID ? `<button onclick="syncFromSheets()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
+      ${(typeof APPS_SCRIPT_URL !== 'undefined' && APPS_SCRIPT_URL !== 'CONST_URL_APPS_SCRIPT') ? `<button onclick="syncFromAppsScript()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
+        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+        sync sheets
+      </button>` : SHEETS_ID ? `<button onclick="syncFromSheets()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
         <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
         sync sheets
       </button>` : ''}

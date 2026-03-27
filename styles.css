@@ -331,7 +331,7 @@
     font-size: 13px; color: var(--testo-muted); cursor: pointer;
   }
   .partite-select {
-    width: 100%; padding: 11px 14px; border: 1.5px solid var(--grigio);
+    width: 100%; padding: 7px 14px; border: 1.5px solid var(--grigio);
     border-radius: 10px; font-size: 14px; font-family: 'Barlow', sans-serif;
     outline: none; background: var(--bianco); color: var(--testo); appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
@@ -414,18 +414,18 @@
   .partita-luogo { font-size: 11px; color: var(--testo-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 
   /* SQUADRE CARDS */
-  .squadre-grid { padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+  .squadre-grid { padding: 0 16px; display: flex; flex-direction: column; gap: 6px; }
   .squadra-card {
     background: var(--bianco); border-radius: 16px; overflow: hidden;
     box-shadow: var(--card-shadow); cursor: pointer;
-    display: flex; align-items: stretch; min-height: 90px;
+    display: flex; align-items: stretch; min-height: 64px;
     border: 1.5px solid transparent;
     transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
   }
   .squadra-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(30,144,214,0.15); border-color: var(--azzurro); }
   .squadra-card:active { transform: scale(0.98); }
   .squadra-card-photo {
-    width: 90px; min-height: 90px; flex-shrink: 0;
+    width: 64px; min-height: 64px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--azzurro) 0%, var(--azzurro-dark) 100%);
     display: flex; align-items: center; justify-content: center;
     position: relative; overflow: hidden;
@@ -435,11 +435,11 @@
     display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
   }
   .squadra-card-body {
-    flex: 1; padding: 14px 14px 12px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    flex: 1; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; gap: 2px;
   }
   .squadra-card-cat {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px; font-weight: 900; line-height: 1.1;
+    font-size: 19px; font-weight: 900; line-height: 1.1;
     color: var(--testo);
   }
   .squadra-card-nome {
@@ -526,9 +526,9 @@
   }
   .altro-card-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; min-height: 56px; cursor: pointer; user-select: none;
+    padding: 10px 16px; min-height: 40px; cursor: pointer; user-select: none;
   }
-  .altro-card-header h3 { font-size: 18px; font-weight: 700; margin: 0; display:flex; align-items:center; gap:8px; }
+  .altro-card-header h3 { font-size: 13px; font-weight: 700; margin: 0; display:flex; align-items:center; gap:6px; }
   .altro-card-chevron { transition: transform 0.25s; color: var(--testo-muted); flex-shrink:0; }
   .altro-card-chevron.open { transform: rotate(180deg); }
   .altro-card-body { display: none; padding: 0 16px 14px; }
@@ -546,11 +546,12 @@
   .sponsor-banner-wrap { display: block; text-decoration: none; margin-bottom: 10px; }
   .sponsor-detail { padding-top: 4px; }
   .sponsor-info { font-size: 11px; color: var(--testo-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
-  .campo-item { padding: 10px 0; border-bottom: 1px solid var(--grigio); }
+  .campo-item { padding: 10px 0; border-bottom: 1px solid var(--grigio); display: flex; flex-direction: column; gap: 4px; }
   .campo-item:last-child { border-bottom: none; padding-bottom: 0; }
-  .campo-nome { font-weight: 700; color: var(--testo); font-size: 14px; margin-bottom: 3px; }
-  .campo-squadra { font-size: 11px; font-weight: 700; color: var(--azzurro); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
-  .campo-indirizzo { font-size: 12px; color: var(--testo-muted); display: flex; align-items: center; gap: 4px; }
+  .campo-nome { font-weight: 700; color: var(--testo); font-size: 14px; }
+  .campo-squadra { font-size: 11px; font-weight: 700; color: var(--azzurro); text-transform: uppercase; letter-spacing: 0.5px; }
+  .campo-indirizzo { font-size: 12px; color: var(--testo-muted); line-height: 1.4; word-break: break-word; }
+  .campo-maps-btn { display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; align-self: flex-start; text-decoration: none; color: var(--azzurro); font-size: 12px; font-weight: 600; background: var(--azzurro-light); padding: 5px 10px; border-radius: 20px; white-space: nowrap; }
   .sponsor-maps { font-size: 11px; color: var(--azzurro); margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; font-weight: 600; }
   .collab-list { display: flex; flex-direction: column; gap: 10px; }
   .collab-item { background: transparent; border-radius: 0; padding: 0; border: none; }
