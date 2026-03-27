@@ -347,7 +347,7 @@ function renderHome() {
   container.innerHTML = `
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--testo);margin-bottom:10px;">Ultime News</div>
     ${latest.map(n => `
-      <div class="news-card" onclick="this.classList.toggle('expanded')">
+      <div class="news-card">
         <h3>${n.titolo}</h3>
         <div class="date">${formatDate(n.data)}</div>
         <div class="body">${n.corpo}</div>
@@ -363,7 +363,7 @@ function renderNotizie() {
     return;
   }
   list.innerHTML = [...DATA.notizie].sort((a,b)=>b.data.localeCompare(a.data)).map(n => `
-    <div class="news-card" onclick="this.classList.toggle('expanded')">
+    <div class="news-card">
       <h3>${n.titolo}</h3>
       <div class="date">${formatDate(n.data)}</div>
       <div class="body">${n.corpo}</div>
@@ -1123,10 +1123,6 @@ function renderAltro() {
       </div>
     </div>
     <div class="app-credits" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      ${SHEETS_ID ? `<button onclick="syncFromSheets()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
-        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-        sync sheets
-      </button>` : ''}
       &copy; 2026 Samuele Ortolani
     </div>
   `;
