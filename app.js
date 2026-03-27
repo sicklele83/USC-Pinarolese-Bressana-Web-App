@@ -77,7 +77,7 @@ const DEFAULT_DATA = {
 
 // ===================== GOOGLE SHEETS SYNC =====================
 // SHEETS_ID deve stare QUI, prima di loadData
-const SHEETS_ID = localStorage.getItem('pinarolese_sheets_id') || "1PyjvETJgeUSI-YvyULD1RvSCx703ew1hHVGM8nzJ77o";
+const SHEETS_ID = localStorage.getItem('pinarolese_sheets_id') || "1D-wkCluigzmaLPaFCgXWReP_275y54dlzm7xyZYyZMQ";
 
 // Campi gestiti da Sheets: vengono sempre presi dal foglio, mai dal localStorage
 const SHEETS_FIELDS = ['notizie', 'partite', 'eventi', 'campiAltri', 'campiPropri', 'sponsor', 'collaborazioni', 'wallpaper', 'contatti', 'squadre', 'societa'];
@@ -109,19 +109,12 @@ function showSheetsStatus(msg) {
   el.style.display = msg ? 'block' : 'none';
 }
 
-// Avvia la sync al caricamento via Apps Script (funziona anche da file://)
+// Avvia la sync al caricamento via gviz JSONP (funziona anche da file://)
 window.addEventListener('DOMContentLoaded', () => {
-  if (typeof syncFromAppsScript === 'function') {
-    syncFromAppsScript();
-  }
+  syncFromSheets();
 });
 
 // Nomi esatti dei fogli (tab) nel tuo Google Sheets — devono corrispondere ESATTAMENTE
-const SHEET_PARTITE      = "Partite";
-const SHEET_GIOCATORI    = "Giocatori";
-const SHEET_NOTIZIE      = "Notizie";
-const SHEET_EVENTI       = "Eventi";
-const SHEET_CAMPI_ALTRI  = "CampiAltri";
 
 function fetchSheet(sheetName) {
   return new Promise((resolve) => {
@@ -194,106 +187,27 @@ function driveLinkToDirect(url) {
 async function syncFromSheets() {
   if (!SHEETS_ID) return;
   showSheetsStatus('⏳ Aggiornamento da Google Sheets...');
-  const hn = document.getElementById('home-news');
-  if (hn) hn.innerHTML = '<div style="text-align:center;padding:20px;font-size:13px;color:var(--testo-muted)">⏳ Caricamento notizie...</div>';
 
-  // Tutti i fetch in parallelo: evita che tab mancanti causino attese cumulative
-  const [tPartite, tGioc, tNotizie, tEventi, tCampiAltri] = await Promise.all([
-    fetchSheet(SHEET_PARTITE).catch(() => null),
-    fetchSheet(SHEET_GIOCATORI).catch(() => null),
-    fetchSheet(SHEET_NOTIZIE).catch(() => null),
-    fetchSheet(SHEET_EVENTI).catch(() => null),
-    fetchSheet(SHEET_CAMPI_ALTRI).catch(() => null)
-  ]);
+  const tabNames = [
+    'Notizie', 'Partite', 'Giocatori', 'CampiAltri', 'CampiPropri',
+    'Eventi', 'Squadre', 'Sponsor', 'Collaborazioni', 'Wallpaper', 'Contatti', 'Societa'
+  ];
+  const keys = [
+    'notizie', 'partite', 'giocatori', 'campiAltri', 'campiPropri',
+    'eventi', 'squadre', 'sponsor', 'collaborazioni', 'wallpaper', 'contatti', 'societa'
+  ];
 
-  let updated = [];
+  const results = await Promise.all(tabNames.map(t => fetchSheet(t).catch(() => null)));
 
-  // --- PARTITE ---
-  if (tPartite) {
-    const rows = sheetsTableToRows(tPartite);
-    DATA.partite = rows.map((r, i) => ({
-      id: i + 1,
-      squadra:   r['squadra']   || '',
-      data:      r['data']      || '',
-      ora:       r['ora']       || '',
-      casa:      r['casa']      || '',
-      ospite:    r['ospite']    || '',
-      golCasa:   r['golcasa']   !== '' ? parseInt(r['golcasa'])   : undefined,
-      golOspite: r['golospite'] !== '' ? parseInt(r['golospite']) : undefined,
-      luogo:     r['luogo']     || '',
-      tipo:      r['tipo']      || 'prossima'
-    }));
-    updated.push('Partite');
-  }
+  const data = {};
+  keys.forEach((k, i) => {
+    if (results[i]) data[k] = sheetsTableToRows(results[i]);
+  });
 
-  // --- GIOCATORI ---
-  if (tGioc) {
-    const rows = sheetsTableToRows(tGioc);
-    DATA.squadre.forEach(sq => {
-      sq.giocatori = [];
-      const gioc = rows.filter(r => r['squadra'] && r['squadra'].toLowerCase() === sq.nome.toLowerCase());
-      if (gioc.length > 0) {
-        sq.giocatori = gioc.map(r => ({
-          nome:   r['nome']   || '',
-          maglia: parseInt(r['maglia']) || 0,
-          ruolo:  (r['ruolo'] || '').toUpperCase()
-        }));
-      }
-    });
-    updated.push('Giocatori');
-  }
+  injectSheetsData(data);
 
-  // --- NOTIZIE ---
-  if (tNotizie) {
-    const rows = sheetsTableToRows(tNotizie);
-    DATA.notizie = rows.map((r, i) => ({
-      id:     i + 1,
-      titolo: r['titolo'] || '',
-      data:   r['data']   || '',
-      corpo:  r['corpo']  || r['testo'] || ''
-    }));
-    updated.push('Notizie');
-  }
-
-  // --- EVENTI ---
-  if (tEventi) {
-    const rows = sheetsTableToRows(tEventi);
-    DATA.eventi = rows.map((r, i) => ({
-      id:          i + 1,
-      titolo:      r['titolo']      || '',
-      descrizione: r['descrizione'] || '',
-      data:        r['data']        || '',
-      ora:         r['ora']         || '',
-      luogo:       r['luogo']       || '',
-      mapsUrl:     r['maps']        || r['mapsurl'] || ''
-    }));
-    updated.push('Eventi');
-  }
-
-  // --- ALTRI CAMPI ---
-  if (tCampiAltri) {
-    const rows = sheetsTableToRows(tCampiAltri);
-    DATA.campiAltri = rows.map((r, i) => ({
-      id:        i + 1,
-      squadra:   r['squadra']   || '',
-      nome:      r['nome']      || r['campo'] || '',
-      indirizzo: r['indirizzo'] || '',
-      maps:      r['maps']      || r['coordinate'] || ''
-    }));
-    updated.push('CampiAltri');
-  }
-
-  saveData(DATA);
-
-  try { renderHome(); } catch(e) {}
-  if (document.getElementById('page-partite')?.style.display !== 'none') renderPartite();
-  if (document.getElementById('page-squadre')?.style.display !== 'none') renderSquadre();
-  if (document.getElementById('page-notizie')?.style.display !== 'none') renderNotizie();
-
-  const msg = updated.length
-    ? '✅ Aggiornato: ' + updated.join(', ')
-    : '⚠️ Nessun foglio trovato — controlla i nomi dei tab';
-  showSheetsStatus(msg);
+  const found = keys.filter((k, i) => results[i]);
+  showSheetsStatus(found.length ? '✅ Aggiornato' : '⚠️ Nessun foglio trovato — verifica SHEETS_ID e nomi dei tab');
   setTimeout(() => showSheetsStatus(''), 4000);
 }
 
@@ -871,7 +785,7 @@ function openSquadra(id) {
       <div style="flex:1"><h2>${s.nome}</h2></div>
       <button id="fav-detail-btn" class="fav-detail-btn${s.id === squadraPreferitaId ? ' attiva' : ''}" onclick="togglePreferitaDetail(${s.id})">
         ${starIcon(s.id === squadraPreferitaId)}
-        ${s.id === squadraPreferitaId ? 'Preferita' : 'Preferita'}
+        ${s.id === squadraPreferitaId ? 'Preferita' : 'Imposta preferita'}
       </button>
     </div>
     <div class="squadra-photo">${photoHtml}</div>
@@ -1209,10 +1123,7 @@ function renderAltro() {
       </div>
     </div>
     <div class="app-credits" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      ${(typeof APPS_SCRIPT_URL !== 'undefined' && APPS_SCRIPT_URL !== 'CONST_URL_APPS_SCRIPT') ? `<button onclick="syncFromAppsScript()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
-        <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-        sync sheets
-      </button>` : SHEETS_ID ? `<button onclick="syncFromSheets()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
+      ${SHEETS_ID ? `<button onclick="syncFromSheets()" style="background:none;border:none;color:var(--testo-muted);font-size:9px;opacity:0.4;cursor:pointer;font-family:inherit;padding:2px 6px;display:flex;align-items:center;gap:3px">
         <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
         sync sheets
       </button>` : ''}
